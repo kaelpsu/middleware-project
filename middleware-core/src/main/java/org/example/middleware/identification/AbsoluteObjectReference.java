@@ -1,14 +1,17 @@
 package org.example.middleware.identification;
 
 public record AbsoluteObjectReference (
-    String protocol,
     String host,
     int port,
     ObjectID objectID
 ) {
 
+    public String getBaseUrl() {
+        return String.format("http://%s:%d", host, port);
+    }
+
     public String getURI() {
-        return String.format("%s://%s:%d/%s", protocol, host, port, objectID.value());
+        return String.format("http://%s:%d/%s", host, port, objectID.value());
     }
 
     @Override
