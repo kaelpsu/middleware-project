@@ -30,7 +30,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: app-jar
-          path: target/app-demo-1.0.0-SNAPSHOT.jar
+          path: app-demo/target/app-demo-1.0.0-SNAPSHOT.jar
 
   # -------------------------------------------------------------
   # JOB 2: Deploy automático nas instâncias AWS EC2
