@@ -30,7 +30,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: app-jar
-          path: target/sistema-distribuido-app-1.0.0.jar
+          path: target/app-demo-1.0.0-SNAPSHOT.jar
 
   # -------------------------------------------------------------
   # JOB 2: Deploy automático nas instâncias AWS EC2
@@ -52,7 +52,7 @@ jobs:
           host: ${{ secrets.GATEWAY_IP }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          source: "sistema-distribuido-app-1.0.0.jar"
+          source: "app-demo-1.0.0-SNAPSHOT.jar"
           target: "/home/${{ secrets.EC2_USER }}/app"
 
       - name: Reiniciar API Gateway
@@ -62,10 +62,10 @@ jobs:
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            pkill -f "sistema-distribuido-app" || true
+            pkill -f "app-demo-1.0.0-SNAPSHOT.jar" || true
             sleep 2
             cd /home/${{ secrets.EC2_USER }}/app
-            nohup java -jar sistema-distribuido-app-1.0.0.jar \
+            nohup java -jar app-demo-1.0.0-SNAPSHOT.jar \
               --node=gateway \
               --tcp-port=8080 \
               --udp-port=9090 > gateway.log 2>&1 &
@@ -78,7 +78,7 @@ jobs:
       #     host: ${{ secrets.TAX_IP_1 }}
       #     username: ${{ secrets.EC2_USER }}
       #     key: ${{ secrets.EC2_SSH_KEY }}
-      #     source: "sistema-distribuido-app-1.0.0.jar"
+      #     source: "app-demo-1.0.0-SNAPSHOT.jar"
       #     target: "/home/${{ secrets.EC2_USER }}/app"
 
       # - name: Reiniciar TaxService (Nó 1)
@@ -88,10 +88,10 @@ jobs:
       #     username: ${{ secrets.EC2_USER }}
       #     key: ${{ secrets.EC2_SSH_KEY }}
       #     script: |
-      #       pkill -f "sistema-distribuido-app" || true
+      #       pkill -f "app-demo-1.0.0-SNAPSHOT.jar" || true
       #       sleep 2
       #       cd /home/${{ secrets.EC2_USER }}/app
-      #       nohup java -jar sistema-distribuido-app-1.0.0.jar \
+      #       nohup java -jar app-demo-1.0.0-SNAPSHOT.jar \
       #         --node=tax \
       #         --host=${{ secrets.TAX_IP_1 }} \
       #         --gateway-host=${{ secrets.GATEWAY_IP }} \
@@ -106,7 +106,7 @@ jobs:
           host: ${{ secrets.ORDER_IP_1 }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          source: "sistema-distribuido-app-1.0.0.jar"
+          source: "app-demo-1.0.0-SNAPSHOT.jar"
           target: "/home/${{ secrets.EC2_USER }}/app"
 
       - name: Reiniciar OrderService (Nó 1)
@@ -116,10 +116,10 @@ jobs:
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            pkill -f "sistema-distribuido-app" || true
+            pkill -f "app-demo-1.0.0-SNAPSHOT.jar" || true
             sleep 2
             cd /home/${{ secrets.EC2_USER }}/app
-            GATEWAY_HOST=${{ secrets.GATEWAY_IP }} GATEWAY_TCP_PORT=8080 nohup java -jar sistema-distribuido-app-1.0.0.jar \
+            GATEWAY_HOST=${{ secrets.GATEWAY_IP }} GATEWAY_TCP_PORT=8080 nohup java -jar app-demo-1.0.0-SNAPSHOT.jar \
               --node=order \
               --host=${{ secrets.ORDER_IP_1 }} \
               --gateway-host=${{ secrets.GATEWAY_IP }} \
