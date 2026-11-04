@@ -68,8 +68,9 @@ jobs:
             nohup java -jar app-demo-1.0.0-SNAPSHOT.jar \
               --node=gateway \
               --tcp-port=8080 \
-              --udp-port=9090 > gateway.log 2>&1 &
+              --udp-port=9090 > gateway.log 2>&1 < /dev/null &
             echo "API Gateway atualizado e rodando!"
+            exit 0
 
       # # 2. Deploy no TaxService (Instância 1)
       # - name: Deploy no TaxService (Nó 1)
