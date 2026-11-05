@@ -3,7 +3,7 @@ name: Build and Deploy to AWS EC2
 on:
   push:
     branches:
-      - main  # Dispara automaticamente ao fazer push na branch main
+      - main
 
 jobs:
   # -------------------------------------------------------------
@@ -11,7 +11,6 @@ jobs:
   # -------------------------------------------------------------
   build:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout do código
         uses: actions/checkout@v4
@@ -33,23 +32,21 @@ jobs:
           path: app-demo/target/app-demo-1.0.0-SNAPSHOT.jar
 
   # -------------------------------------------------------------
-  # JOB 2: Deploy automático nas instâncias AWS EC2
+  # JOB 2: Deploy no API Gateway (IP Público Fixo)
   # -------------------------------------------------------------
-  deploy:
+  deploy-gateway:
     needs: build
     runs-on: ubuntu-latest
-
     steps:
       - name: Baixar o artefato compilado
         uses: actions/download-artifact@v4
         with:
           name: app-jar
 
-      # 1. Deploy no API Gateway
-      - name: Deploy no API Gateway
+      - name: Copiar JAR para o API Gateway
         uses: appleboy/scp-action@v0.1.4
         with:
-          host: ${{ secrets.GATEWAY_IP }}
+          host: ${{ secrets.GATEWAY_PUBLIC_IP }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           source: "app-demo-1.0.0-SNAPSHOT.jar"
@@ -58,74 +55,84 @@ jobs:
       - name: Reiniciar API Gateway
         uses: appleboy/ssh-action@v0.1.10
         with:
-          host: ${{ secrets.GATEWAY_IP }}
+          host: ${{ secrets.GATEWAY_PUBLIC_IP }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
             APP="app-demo-1.0.0"
             pkill -f "^java.*[a]pp-demo-1.0.0-SNAPSHOT.jar" || true
             sleep 2
+            mkdir -p /home/${{ secrets.EC2_USER }}/app
             cd /home/${{ secrets.EC2_USER }}/app
             nohup java -jar ${APP}-SNAPSHOT.jar \
               --node=gateway \
               --tcp-port=8080 \
               --udp-port=9090 > gateway.log 2>&1 < /dev/null &
-            echo "API Gateway atualizado e rodando!"
+            echo "API Gateway ativo!"
 
-      # # 2. Deploy no TaxService (Instância 1)
-      # - name: Deploy no TaxService (Nó 1)
-      #   uses: appleboy/scp-action@v0.1.4
-      #   with:
-      #     host: ${{ secrets.TAX_IP_1 }}
-      #     username: ${{ secrets.EC2_USER }}
-      #     key: ${{ secrets.EC2_SSH_KEY }}
-      #     source: "app-demo-1.0.0-SNAPSHOT.jar"
-      #     target: "/home/${{ secrets.EC2_USER }}/app"
+  # -------------------------------------------------------------
+  # JOB 3: Deploy nos 4 Nós de Serviço via Rede Privada (Bastion)
+  # -------------------------------------------------------------
+  deploy-services:
+    needs: deploy-gateway
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - node_type: "tax"
+            secret_ip: "TAX_1_PRIVATE_IP"
+          - node_type: "tax"
+            secret_ip: "TAX_2_PRIVATE_IP"
+          - node_type: "order"
+            secret_ip: "ORDER_1_PRIVATE_IP"
+          - node_type: "order"
+            secret_ip: "ORDER_2_PRIVATE_IP"
 
-      # - name: Reiniciar TaxService (Nó 1)
-      #   uses: appleboy/ssh-action@v0.1.10
-      #   with:
-      #     host: ${{ secrets.TAX_IP_1 }}
-      #     username: ${{ secrets.EC2_USER }}
-      #     key: ${{ secrets.EC2_SSH_KEY }}
-      #     script: |
-      #       APP="app-demo-1.0.0"
-      #       pkill -f "^java.*[a]pp-demo-1.0.0-SNAPSHOT.jar" || true
-      #       sleep 2
-      #       cd /home/${{ secrets.EC2_USER }}/app
-      #       nohup java -jar ${APP}-SNAPSHOT.jar \
-      #         --node=tax \
-      #         --host=${{ secrets.TAX_IP_1 }} \
-      #         --gateway-host=${{ secrets.GATEWAY_IP }} \
-      #         --tcp-port=8080 \
-      #         --udp-port=9090 > tax.log 2>&1 < /dev/null &
-      #       echo "TaxService 1 atualizado e rodando!"
+    steps:
+      - name: Baixar o artefato compilado
+        uses: actions/download-artifact@v4
+        with:
+          name: app-jar
 
-      # 3. Deploy no OrderService (Instância 1)
-      - name: Deploy no OrderService (Nó 1)
+      - name: Copiar JAR via Gateway (Proxy Jump)
         uses: appleboy/scp-action@v0.1.4
         with:
-          host: ${{ secrets.ORDER_IP_1 }}
+          # Conecta no IP privado do nó saltando pelo IP público do Gateway
+          host: ${{ secrets[matrix.secret_ip] }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
+          proxy_host: ${{ secrets.GATEWAY_PUBLIC_IP }}
+          proxy_username: ${{ secrets.EC2_USER }}
+          proxy_key: ${{ secrets.EC2_SSH_KEY }}
           source: "app-demo-1.0.0-SNAPSHOT.jar"
           target: "/home/${{ secrets.EC2_USER }}/app"
 
-      - name: Reiniciar OrderService (Nó 1)
+      - name: Iniciar Serviço com IPs Privados
         uses: appleboy/ssh-action@v0.1.10
         with:
-          host: ${{ secrets.ORDER_IP_1 }}
+          host: ${{ secrets[matrix.secret_ip] }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
+          proxy_host: ${{ secrets.GATEWAY_PUBLIC_IP }}
+          proxy_username: ${{ secrets.EC2_USER }}
+          proxy_key: ${{ secrets.EC2_SSH_KEY }}
           script: |
             APP="app-demo-1.0.0"
+            PRIVATE_IP=${{ secrets[matrix.secret_ip] }}
+            GW_PRIV_IP=${{ secrets.GATEWAY_PRIVATE_IP }}
+
             pkill -f "^java.*[a]pp-demo-1.0.0-SNAPSHOT.jar" || true
             sleep 2
             cd /home/${{ secrets.EC2_USER }}/app
-            GATEWAY_HOST=${{ secrets.GATEWAY_IP }} GATEWAY_TCP_PORT=8080 nohup java -jar ${APP}-SNAPSHOT.jar \
-              --node=order \
-              --host=${{ secrets.ORDER_IP_1 }} \
-              --gateway-host=${{ secrets.GATEWAY_IP }} \
+
+            GATEWAY_HOST=${GW_PRIV_IP} GATEWAY_TCP_PORT=8080 nohup java \
+              -Dgateway.host=${GW_PRIV_IP} \
+              -Dgateway.tcp.port=8080 \
+              -jar ${APP}-SNAPSHOT.jar \
+              --node=${{ matrix.node_type }} \
+              --host=${PRIVATE_IP} \
+              --gateway-host=${GW_PRIV_IP} \
               --tcp-port=8080 \
-              --udp-port=9090 > order.log 2>&1 < /dev/null &
-            echo "OrderService 1 atualizado e rodando!"
+              --udp-port=9090 > ${{ matrix.node_type }}.log 2>&1 < /dev/null &
+            echo "Nó ${{ matrix.node_type }} (${PRIVATE_IP}) iniciado e apontando para o Gateway (${GW_PRIV_IP})!"
